@@ -57,7 +57,7 @@ async function pull(token) {
   ]);
   const f = (r) => r.fields || {};
   return {
-    records: referral.map((r) => ({ gem_id: f(r).fldrZQjQpxhPP72rr || r.id, key: ne(f(r).fldxxSB6Z1MBQjXTG), key2: nl(f(r).fldQKUgf9leWSmWc2), member: sel(f(r).fldu3ksNuwTMTpED9), status: sel(f(r).flduY9LD2fbquyeLY), reviewed: f(r).fld3BRq8Zzg0sbawJ || '' })),
+    records: referral.map((r) => ({ gem_id: f(r).fldrZQjQpxhPP72rr || r.id, key: ne(f(r).fldxxSB6Z1MBQjXTG), key2: nl(f(r).fldQKUgf9leWSmWc2), member: sel(f(r).fldu3ksNuwTMTpED9).trim(), status: sel(f(r).flduY9LD2fbquyeLY), reviewed: f(r).fld3BRq8Zzg0sbawJ || '' })),
     referrals: referrals.map((r) => ({ key: ne(f(r).fldcLUIY1qoZ13cku), key2: nl(f(r).fldi6Y1pAYNhKQjF6), specify: String(f(r).fldnBSYv91dEhTmNW || ''), applied: f(r).fldOD4zvVs1C3j8Lf || '' })),
     signed: signed.map((r) => ({ key: ne(f(r).fldcLUIY1qoZ13cku), key2: nl(f(r).fldi6Y1pAYNhKQjF6) })),
     board: board.map((r) => ({ member: String(f(r).fldlyv8AbvmCzY4vN || '').trim(), total: Number(f(r).flddnNQRc0UAG4Ah5 || 0) })),
@@ -67,7 +67,8 @@ async function pull(token) {
 
 // ---------- the same calculations the Claude dashboard used ----------
 function buildData(raw, now = Date.now()) {
-  const { records, referrals, signed, board, arch } = raw;
+  const { referrals, signed, board, arch } = raw;
+  const records = raw.records.map((r) => ({ ...r, member: String(r.member || '').trim() })); // blank team members (" ") become empty and are ignored
 
   // engaged: unique people at "2. Engagement" or "No.2 - Not interested in further discussion"
   const engagedRecs = records.filter((r) => isEngaged(r.status));
@@ -93,7 +94,7 @@ function buildData(raw, now = Date.now()) {
     .map((r) => ({ role: r.role, archetypes: r.archetypes, engaged_pct: r.archetypes ? Math.round(100 * r.engaged / r.archetypes) : 0 }));
 
   // referral leaderboard (Internal Referrals Leaderboard table)
-  const leaders = board.filter((r) => r.member && r.total > 0)
+  const leaders = board.map((r) => ({ member: String(r.member || '').trim(), total: r.total })).filter((r) => r.member && r.total > 0)
     .sort((a, b) => b.total - a.total || a.member.localeCompare(b.member)).slice(0, 10);
 
   // engagement leaderboard
