@@ -18,7 +18,11 @@ const ne = (e) => String(e || '').trim().toLowerCase();
 const nl = (u) => String(u || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[?#].*$/, '').replace(/\/+$/, '');
 const norm = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
 const monday = (t) => { const d = new Date(t); const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())); x.setUTCDate(x.getUTCDate() - ((x.getUTCDay() + 6) % 7)); return x.getTime(); };
-const isEngaged = (s) => String(s).startsWith('2.') || String(s).startsWith('No.2');
+// Any of these statuses counts as engaged (a person only needs one record with one of them):
+// 2. Engagement, No.2 (not interested in further discussion), 3.1 Call booked, 3.2 Factory visit booked,
+// 4.1 Moved into the Applicant Funnel, 4.2 Future Interest
+const ENGAGED_PREFIXES = ['2.', 'No.2', '3.1', '3.2', '4.1', '4.2'];
+const isEngaged = (s) => ENGAGED_PREFIXES.some((p) => String(s || '').trim().startsWith(p));
 
 // ---------- Airtable REST ----------
 async function fetchAll(token, table, fieldIds, formula) {
@@ -68,11 +72,12 @@ async function pull(token) {
 // ---------- the same calculations the Claude dashboard used ----------
 function buildData(raw, now = Date.now()) {
   const { referrals, signed, board, arch } = raw;
-  const records = raw.records.map((r) => ({ ...r, member: String(r.member || '').trim() })); // blank team members (" ") become empty and are ignored
+  // records with a blank Team Member (" ") are removed from every count
+  const records = raw.records.map((r) => ({ ...r, member: String(r.member || '').trim() })).filter((r) => r.member);
 
   // engaged: unique people at "2. Engagement" or "No.2 - Not interested in further discussion"
   const engagedRecs = records.filter((r) => isEngaged(r.status));
-  const engaged = new Set(engagedRecs.map((r) => r.key || r.key2 || r.gem_id)).size;
+  const engaged = new Set(engagedRecs.map((r) => r.gem_id)).size; // unique Gem IDs
 
   // net-new hires: signed applications that are also in the Referral Funnel
   const outKeys = new Set();
@@ -100,7 +105,7 @@ function buildData(raw, now = Date.now()) {
   // engagement leaderboard
   const seen = new Set(), c = new Map();
   engagedRecs.filter((r) => r.member).forEach((r) => {
-    const k = r.member + '|' + (r.key || r.key2 || r.gem_id);
+    const k = r.member + '|' + r.gem_id;
     if (seen.has(k)) return;
     seen.add(k);
     c.set(r.member, (c.get(r.member) || 0) + 1);
@@ -119,8 +124,10 @@ function buildData(raw, now = Date.now()) {
   };
   const first = new Map();
   const put = (k, w) => { if (!first.has(k) || w < first.get(k)) first.set(k, w); };
-  records.filter((r) => String(r.status).startsWith('2.') && r.reviewed).forEach((r) => put(r.key || r.key2 || r.gem_id, monday(r.reviewed)));
-  referrals.forEach((a) => { const k = a.key || a.key2; if (k && a.applied && matchMember(a.specify)) put(k, monday(a.applied)); });
+  const keyToGem = new Map();
+  records.forEach((r) => { if (r.key) keyToGem.set(r.key, r.gem_id); if (r.key2) keyToGem.set(r.key2, r.gem_id); });
+  engagedRecs.filter((r) => r.reviewed).forEach((r) => put(r.gem_id, monday(r.reviewed)));
+  referrals.forEach((a) => { const k = keyToGem.get(a.key) || keyToGem.get(a.key2) || a.key || a.key2; if (k && a.applied && matchMember(a.specify)) put(k, monday(a.applied)); });
   const nowW = monday(now), weekly = [];
   for (let t = WEEKS_START; t <= nowW; t += WEEK) weekly.push({ week: new Date(t).toISOString().slice(0, 10), engagements: [...first.values()].filter((w) => w === t).length });
 
