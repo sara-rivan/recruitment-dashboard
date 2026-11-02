@@ -13,6 +13,9 @@ const T = {
 const WEEKS_START = Date.UTC(2026, 9, 5); // first week shown: w/c 5 Oct 2026
 const DAY = 864e5, WEEK = 7 * DAY;
 
+// People who never appear in "Actions to do" (matched on the whole name, ignoring case and punctuation)
+const NO_ACTIONS = ['harvey hodd', 'harvey', 'robert slade', 'rob slade', 'rob'];
+
 const sel = (x) => (typeof x === 'string' ? x : x && x.name ? x.name : '');
 const ne = (e) => String(e || '').trim().toLowerCase();
 const nl = (u) => String(u || '').toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[?#].*$/, '').replace(/\/+$/, '');
@@ -134,8 +137,7 @@ function buildData(raw, now = Date.now()) {
   // actions: pending > 2 days or message sent > 7 days since Last status review
   const a = new Map();
   records.forEach((r) => {
-    if (!r.member) return;
-    const o = a.get(r.member) || { member: r.member, actions: 0 };
+    if (!r.member || NO_ACTIONS.includes(norm(r.member))) return;    const o = a.get(r.member) || { member: r.member, actions: 0 };
     const age = r.reviewed ? now - new Date(r.reviewed).getTime() : 0;
     const s = String(r.status);
     if ((s.startsWith('0.') && age > 2 * DAY) || (s.startsWith('1.') && age > 7 * DAY)) o.actions += 1;
